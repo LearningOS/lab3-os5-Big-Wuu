@@ -4,11 +4,11 @@ use crate::loader::get_app_data_by_name;
 use crate::mm::{translated_refmut, translated_str};
 use crate::task::{
     add_task, current_task, current_user_token, exit_current_and_run_next,
-    suspend_current_and_run_next, TaskStatus,
+    suspend_current_and_run_next, TaskStatus, TaskInfo
 };
 use crate::timer::get_time_us;
 use alloc::sync::Arc;
-use crate::config::MAX_SYSCALL_NUM;
+// use crate::config::MAX_SYSCALL_NUM;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -17,12 +17,12 @@ pub struct TimeVal {
     pub usec: usize,
 }
 
-#[derive(Clone, Copy)]
-pub struct TaskInfo {
-    pub status: TaskStatus,
-    pub syscall_times: [u32; MAX_SYSCALL_NUM],
-    pub time: usize,
-}
+// #[derive(Clone, Copy)]
+// pub struct TaskInfo {
+//     pub status: TaskStatus,
+//     pub syscall_times: [u32; MAX_SYSCALL_NUM],
+//     pub time: usize,
+// }
 
 pub fn sys_exit(exit_code: i32) -> ! {
     debug!("[kernel] Application exited with code {}", exit_code);
@@ -106,8 +106,13 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 }
 
 // YOUR JOB: 引入虚地址后重写 sys_get_time
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    let _us = get_time_us();
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
+    let us = get_time_us();
+    let time_val = translated_refmut(current_user_token(), ts);
+    *time_val = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
     // unsafe {
     //     *ts = TimeVal {
     //         sec: us / 1_000_000,
@@ -119,7 +124,9 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
 
 // YOUR JOB: 引入虚地址后重写 sys_task_info
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
-    -1
+    let task_info = translated_refmut(current_user_token(), ti);
+    *task_info = current_task().unwrap().get_task_info();
+    0
 }
 
 // YOUR JOB: 实现sys_set_priority，为任务添加优先级

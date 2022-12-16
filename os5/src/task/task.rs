@@ -2,11 +2,13 @@
 
 use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT;
+use crate::config::{TRAP_CONTEXT, MAX_SYSCALL_NUM};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
+use crate::timer::get_time_us;
 use alloc::sync::{Arc, Weak};
+use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefMut;
 
@@ -46,6 +48,10 @@ pub struct TaskControlBlockInner {
     pub children: Vec<Arc<TaskControlBlock>>,
     /// It is set when active exit or execution error occurs
     pub exit_code: i32,
+    /// task info utilities
+    pub syscall_times: Vec<u32>,
+    first_scheduled: bool,
+    start_time: usize, // in us
 }
 
 /// Simple access to its internal fields
@@ -66,6 +72,16 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }
+    /// update task info every time being scheduled
+    pub fn update_task_info(&mut self) {
+        if self.first_scheduled {
+            self.first_scheduled = false;
+            self.start_time = get_time_us();
+        }
+    }
+    pub fn update_syscall_times(&mut self, syscall_id: usize) {
+        self.syscall_times[syscall_id] += 1;
     }
 }
 
@@ -103,6 +119,9 @@ impl TaskControlBlock {
                     parent: None,
                     children: Vec::new(),
                     exit_code: 0,
+                    syscall_times: vec![0; MAX_SYSCALL_NUM],
+                    first_scheduled: true,
+                    start_time: usize::MAX,
                 })
             },
         };
@@ -170,6 +189,9 @@ impl TaskControlBlock {
                     parent: Some(Arc::downgrade(self)),
                     children: Vec::new(),
                     exit_code: 0,
+                    syscall_times: vec![0; MAX_SYSCALL_NUM],
+                    first_scheduled: true,
+                    start_time: usize::MAX,
                 })
             },
         });
@@ -187,6 +209,19 @@ impl TaskControlBlock {
     pub fn getpid(&self) -> usize {
         self.pid.0
     }
+    pub fn get_task_info(&self) -> TaskInfo {
+        let inner = self.inner_exclusive_access();
+        let running_time_us = get_time_us() - inner.start_time;
+        let mut task_info = TaskInfo {
+            status: TaskStatus::Running,
+            syscall_times: [0; MAX_SYSCALL_NUM],
+            time: running_time_us / 1_000, // us -> ms
+        };
+        for (i, v) in inner.syscall_times.iter().enumerate() {
+            task_info.syscall_times[i] = *v;
+        }
+        task_info
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -196,4 +231,11 @@ pub enum TaskStatus {
     Ready,
     Running,
     Zombie,
+}
+
+#[derive(Clone, Copy)]
+pub struct TaskInfo {
+    pub status: TaskStatus,
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    pub time: usize,
 }
