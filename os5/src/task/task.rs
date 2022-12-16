@@ -2,7 +2,7 @@
 
 use super::TaskContext;
 use super::{pid_alloc, KernelStack, PidHandle, add_task};
-use crate::config::{TRAP_CONTEXT, MAX_SYSCALL_NUM};
+use crate::config::{TRAP_CONTEXT, MAX_SYSCALL_NUM, BIG_STRIDE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE, MapPermission};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
@@ -52,6 +52,9 @@ pub struct TaskControlBlockInner {
     pub syscall_times: Vec<u32>,
     first_scheduled: bool,
     start_time: usize, // in us
+    /// for stride scheduling algorithm
+    pub pass: usize,
+    pub priority: usize,
 }
 
 /// Simple access to its internal fields
@@ -79,6 +82,7 @@ impl TaskControlBlockInner {
             self.first_scheduled = false;
             self.start_time = get_time_us();
         }
+        self.pass += BIG_STRIDE / self.priority;
     }
     pub fn update_syscall_times(&mut self, syscall_id: usize) {
         self.syscall_times[syscall_id] += 1;
@@ -122,6 +126,8 @@ impl TaskControlBlock {
                     syscall_times: vec![0; MAX_SYSCALL_NUM],
                     first_scheduled: true,
                     start_time: usize::MAX,
+                    pass: 0,
+                    priority: 16,
                 })
             },
         };
@@ -166,6 +172,8 @@ impl TaskControlBlock {
                     syscall_times: vec![0; MAX_SYSCALL_NUM],
                     first_scheduled: true,
                     start_time: usize::MAX,
+                    pass: 0,
+                    priority: 16,
                 })
             },
         });
@@ -246,6 +254,8 @@ impl TaskControlBlock {
                     syscall_times: vec![0; MAX_SYSCALL_NUM],
                     first_scheduled: true,
                     start_time: usize::MAX,
+                    pass: 0,
+                    priority: 16,
                 })
             },
         });
