@@ -67,6 +67,26 @@ impl MemorySet {
             None,
         );
     }
+    /// the area [start_va, end_va) must be exactly same
+    pub fn remove_framed_area(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let start_vpn: VirtPageNum = start_va.floor();
+        let end_vpn: VirtPageNum = end_va.ceil();
+        if let Some((idx, area)) = self
+            .areas
+            .iter_mut()
+            .enumerate()
+            .find(|(_, area)|{
+                // exactly same
+                area.start_vpn() == start_vpn && area.end_vpn() == end_vpn
+            }) 
+        {
+            area.unmap(&mut self.page_table);
+            self.areas.remove(idx);
+            true
+        } else {
+            false
+        }
+    }
     pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
         if let Some((idx, area)) = self
             .areas

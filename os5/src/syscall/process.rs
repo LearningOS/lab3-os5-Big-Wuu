@@ -159,8 +159,15 @@ pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     task.mmap(start, len, port)
 }
 
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    -1
+pub fn sys_munmap(start: usize, len: usize) -> isize {
+    // check validity as early as possible
+    let start_va = VirtAddr::from(start);
+    if !start_va.aligned() {
+        // not aligned
+        return -1;
+    }
+    let task = current_task().unwrap();
+    task.munmap(start, len)
 }
 
 //

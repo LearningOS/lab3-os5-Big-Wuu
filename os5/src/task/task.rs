@@ -241,6 +241,16 @@ impl TaskControlBlock {
         );
         0
     }
+    pub fn munmap(&self, start: usize, len: usize) -> isize {
+        let start_va = VirtAddr::from(start);
+        let end_va = VirtAddr::from(start + len);
+        let memory_set = &mut self.inner_exclusive_access().memory_set;
+        if memory_set.remove_framed_area(start_va, end_va) {
+            0
+        } else {
+            -1
+        }
+    }
 }
 
 #[derive(Copy, Clone, PartialEq)]
